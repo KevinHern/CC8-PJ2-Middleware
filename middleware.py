@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 from pymongo import MongoClient
 import io
 import threading
@@ -7,6 +7,7 @@ import time
 from datetime import datetime
 import requests
 
+virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
 middleware_id = 'MWApp_CC8Project001'
 
@@ -51,20 +52,154 @@ def get_next(option):
 	field = ''
 	if option == 'device':
 		field = 'next_device'
-	else:
+	elif option == 'event':
 		field = 'next_event'
+	elif option == 'switch':
+		field = 'next_switch'
+	elif option == 'slider':	
+		field = 'next_slider'
+	elif option == 'led':
+		field = 'next_led'
+	elif option == 'rgb':
+		field = 'next_rgb'
+	elif option == 'fan':
+		field = 'next_fan'
+	elif option == 'heat':
+		field = 'next_heat'
+	elif option == 'pick_color':
+		field = 'next_pick_color'
 
 	col = get_collection('misc')
 	doc = col.find_one({'name': 'misc'})
 
 	# Get ID and update it
-	next_id = doc.get('field')
+	next_id = doc.get(field)
 	doc_id = doc.get('_id')
 
 	# Updating next ID
-	col.update_one({'_id': doc_id}, {'$inc': {'field': 1}})
+	col.update_one({'_id': doc_id}, {'$inc': {field: 1}})
 
 	return int(next_id)
+
+def log_device(device_type, value, iot_device):
+	# Collections
+	devices = get_collection('iot_disp')
+	logs = get_collection('logs')
+
+	# Get Device info
+	device = devices.find_one({'iot_type': iot_device})
+	query = {'id': device.get('id')}
+
+	# Get Events
+	events = get_collection('iot_events')
+
+	# Date
+	this_date = get_date()
+
+	# Log number
+	log_number = logs.find_one(query).get('sizelog') + 1
+
+	''' Log info '''
+	# Switch, LED or RGB
+	if device_type == 1: 
+		logs.update_one(
+			query,
+			{
+				'$set': {
+					('log' + str(log_number)):
+						{'date': this_date, 'sensor': value, 'status': device.get('status'), 'text': 'ON' if value == 1 else 'OFF'},
+					'sizelog': log_number
+				}
+			}
+		)
+	# Fan, Heat, Slider, RGB or Pick Color
+	elif device_type == 2:
+		logs.update_one(
+			query,
+			{
+				'$set': {
+					('log' + str(log_number)):
+						{'date': this_date, 'sensor': value, 'status': device.get('status'), 'text': device.get('text')},
+					'sizelog': log_number
+				}
+			}
+		)
+	# Message
+	elif device_type == 3:
+		pass
+
+def process_data(data):
+	# Getting parameters
+	if len(data) > 0:
+		flags = int(data[0:2], 16)
+		speed = int(data[2], 16)
+		sliders = int(data[4:10], 16)
+		led_rgb = int(data[12:18], 16)
+		color = int(data[19:24], 16)
+
+		message = ""
+		if len(data) > 24:
+			message = data[25:]
+			message = bytes.fromhex(message).decode('utf-8') 
+		
+		# Processing 
+		lcd = flags & 0x80
+
+		# Processing Switches
+		switch0 = (flags & 0x40) >> 6
+		log_device(1, switch0,'switch-0')
+		
+
+		switch1 = (flags & 0x20) >> 5
+		log_device(1, switch1, 'switch-1')
+
+		
+		'''
+		# Processing Fan
+		fan = (flags & 0x10) >> 4
+		log_device(2, 0 if fan == 0 else speed, 'fan-0')
+
+		# Processing RGBs
+		rgb = (flags & 0x08) >> 3
+
+		red_rgb = led_rgb & 0xFF0000
+		green_rgb = led_rgb & 0x00FF00
+		blue_rgb = led_rgb & 0x0000FF
+
+		log_device(1, 0 if rgb == 0 else led_rgb, 'rgb-0')
+
+		# Processing LEDs
+		led0 = (flags & 0x40) >> 6
+		log_device(1, led0, 'led-0')
+
+		led1 = (flags & 0x20) >> 5
+		log_device(1, led1, 'led-1')
+
+		# Processing heat
+		heat = flags & 0x01
+		log_device(1, heat, 'heat-0')
+
+		# Processing Sliders
+		slider0 = sliders & 0xFF0000
+		log_device(2, slider0, 'slider-0')
+
+		slider1 = sliders & 0x00FF00
+		log_device(2, slider1, 'slider-1')
+
+		slider2 = sliders & 0x0000FF
+		log_device(2, slider2, 'slider-2')
+
+		# Processing Pick Color
+		red_color = color & 0xFF0000
+		green_color = color & 0x00FF00
+		blue_color = color & 0x0000FF
+
+		log_device(2, slider0, 'pick_color-0')
+
+		'''
+		
+	else:
+		pass
 
 def get_date():		# PENDING
 	return datetime.today().isoformat() + 'Z'
@@ -176,10 +311,23 @@ def search():
 		server_response['search'] = {'id_hardware': id_, 'type': type_}
 
 		# Do here date comparisons to get the data
-		'''
-		col = get_collection('logs')
-		iot_device = iot_devices = col.find({'id': id_})
-		'''
+		
+		logs = get_collection('logs')
+		iot_device = logs.find_one({'id': id_})
+		
+		print('here')
+		num_logs = iot_device.get('sizelog')
+
+		print('here1')
+
+		for i in range(num_logs):
+			candidate = iot_device.get('log' + str(i+1))
+			if(finish >= candidate['date'] and candidate['date'] >= start):
+				server_response[candidate['date']] = {'sensor': candidate['sensor'], 'status': candidate['status'], 'text': candidate['text']}
+			else:
+				pass
+
+
 	except:
 		pass
 	'''
@@ -295,9 +443,18 @@ def iotcreate():
 	Input Fields:
 	- tag: Device label
 	- type: Either 'input' or 'output'
+	- iot_type: type of IoT device
 
 	Output Fields:
 	- result: either 'ok' or 'error'
+
+	1) sliders = 0
+	2) leds = 0
+	3) switches = 0
+	4) rgbs = 0
+	5) fans = 0
+	6) heats = 0
+	7) pick_colors = 0
 	'''
 
 	rjson = request.get_json()
@@ -306,14 +463,36 @@ def iotcreate():
 	tag = rjson['tag']
 	type_ = rjson['type']
 	id_ = 'id' + str(get_next('device'))
+	iot_type = rjson['iot_type']
 
+	# Deciding what type of iot device
+	iot_type_device = ""
+
+	if iot_type == 1:
+		iot_type_device = "slider-" + str(get_next('slider'))
+	elif iot_type == 2:
+		iot_type_device = "led-" + str(get_next('led'))
+	elif iot_type == 3:
+		iot_type_device = "switch-" + str(get_next('switch'))
+	elif iot_type == 4:
+		iot_type_device = "rgb-" + str(get_next('rgb'))
+	elif iot_type == 5:
+		iot_type_device = "fan-" + str(get_next('fan'))
+	elif iot_type == 6:
+		iot_type_device = "heat-" + str(get_next('heat'))
+	else:
+		iot_type_device = "pick_color-" + str(get_next('pick_color'))
 
 	# Dispatching request
 	server_response = generate_response()
 
-	col = get_collection('iot_disp')
-	result = col.insert_one({'id': id_, 'tag': tag, 'type': type_, 'status': False})
+	# Registering device
+	devices = get_collection('iot_disp')
+	result = devices.insert_one({'id': id_, 'tag': tag, 'type': type_, 'status': False, 'iot_type': iot_type_device})
 
+	# Creating log record
+	logs = get_collection('logs')
+	result = logs.insert_one({'id': id_, 'sizelog': 0})
 	server_response['result'] = 'OK' if result != '' else 'ERROR'
 
 	return jsonify(server_response)
@@ -334,27 +513,45 @@ def iotdelete():
 	id_ = rjson['id']
 
 	# Dispatching request
-	server_response = generate_response()
+	server_response = generate_ersponse()
 
-	col = get_collection('iot_disp')
-	result = col.delete_one({'id': id_})
+	try:
+		# Devices
+		devices = get_collection('iot_disp')
+		result = devices.delete_one({'id': id_})
 
-	server_response['result'] = 'OK' if result != None else 'ERROR'
+		# Logs
+		logs = get_collection('logs')
+		result = logs.delete_one({'id': id_})
+
+		server_response['result'] = 'OK'
+	except:
+		server_response['result'] = 'ERROR'
 
 	return jsonify(server_response)
 
 
+@app.route('/log', methods=['POST'])
+def log():
 
-@app.route('/test', methods=['POST'])
-def test():
-	# Dispatching request
-	col = get_collection('iot_disp')
-	test_doc = {'succesful2': ' ok'}
+	# Getting Data
+	print("Data:")
+	data = request.data.decode("utf-8") 
+	print(data)
+	print(len(data))
 
-	col.insert_one(test_doc)
-	# Return response
-	server_response = {'status': ' OK'}
-	return jsonify(server_response)
+	# Process Data
+	process_data(data)
+
+	# Making Dummy response
+	response = make_response()
+
+	response.headers['Content-Type'] = "text/plain"
+	response.headers['Access-Control-Allow-Origin'] = virtual_device_url
+	response.headers['Server'] = "Mr. Server CC8"
+	response.data = ""
+
+	return response
 
 
 if __name__ == "__main__":

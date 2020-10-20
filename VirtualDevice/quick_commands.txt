@@ -1,0 +1,31 @@
+// Create Collections
+db.createCollection("iot_disp")
+db.createCollection("iot_events")
+db.createCollection("logs")
+db.createCollection("miscellaneous")
+
+// Insert initial Docs
+db.miscellaneous.insert({
+"name": "misc",
+"next_device": 0,
+"next_event": 0,
+"next_switch": 0,
+"next_slider": 0,
+"next_led": 0,
+"next_rgb": 0,
+"next_fan": 0,
+"next_heat": 0,
+"next_pick_color": 0
+})
+
+// Query docs
+db.iot_disp.find({})
+db.iot_events.find({})
+db.logs.find({})
+db.miscellaneous.find({})
+
+// Delete collections
+db.iot_disp.drop()
+db.iot_events.drop()
+db.logs.drop()
+db.miscellaneous.drop()
