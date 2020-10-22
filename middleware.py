@@ -1,23 +1,26 @@
 from flask import Flask, request, jsonify, make_response
 from pymongo import MongoClient
+import requests
+from datetime import datetime
+import time
+import os
 import io
 import threading
-import os
-import time
-from datetime import datetime
-import requests
+from multiprocessing import Process
 
 virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
-middleware_id = 'MWApp_CC8Project001'
+middleware_id = 'MW_KH_3D_Printer'
+middleware_url = 'http://127.0.0.1:12000/'
 
 '''
 client = MongoClient(mongo_url)
 db = client.cc8
 
 // ----- COLLECTIONS ----- //
-col = client.cc8.iot_disp
-col = client.cc8.iot_events
+col = client.cc8.iot_devices
+col = client.cc8.iot_events_local
+col = client.cc8.iot_events_external
 col = client.cc8.logs
 col = client.cc8.miscellaneous
 
@@ -37,10 +40,12 @@ col.insert_one(document)	// Inserts a document
 
 def get_collection(option):
 	client = MongoClient(mongo_url)
-	if option == 'iot_disp':
-		return client.cc8.iot_disp
-	elif option == 'iot_events':
-		return client.cc8.iot_events
+	if option == 'devices':
+		return client.cc8.iot_devices
+	elif option == 'levents':
+		return client.cc8.iot_events_local
+	elif option == 'eexternal':
+		return client.cc8.iot_events_external
 	elif option == 'logs':
 		return client.cc8.logs
 	elif option == 'misc':	
@@ -53,7 +58,7 @@ def get_next(option):
 	if option == 'device':
 		field = 'next_device'
 	elif option == 'event':
-		field = 'next_event'
+		field = 'next_external_event'
 	elif option == 'switch':
 		field = 'next_switch'
 	elif option == 'slider':	
@@ -81,17 +86,69 @@ def get_next(option):
 
 	return int(next_id)
 
+def do_event(value, iot_device):
+	# Get Device info
+	device = devices.find_one({'iot_type': iot_device})
+	query = {'id': device.get('id')}
+
+	# Fetch all events related to the device
+	events = get_collection('levents')
+	iotdev_events = events.find(query)
+
+	# Execute all events
+	for event in iotdev_events:
+		# Fetch If, Then y Else
+		condition = event.get('condition')
+		if_ = event.get('if')
+
+		# Evaluate Condition
+		field = list(if_['right'].keys()).pop(0)
+		result = False
+
+		if condition == "=":
+			result = value == if_['right'][field]
+		elif condition == "!=":
+			result = value != if_['right'][field]
+		elif condition == "<":
+			result = value < if_['right'][field]
+		elif condition == "<=":
+			result = value <= if_['right'][field]
+		elif condition == ">":
+			result = value > if_['right'][field]
+		elif condition == "=>":
+			result = value >= if_['right'][field]
+
+		# Do real execution
+		to_execute = {}
+
+		if result:
+			to_execute = event.get('then')
+		else:
+			to_execute = event.get('else')
+
+		# Send request
+		requests.post(
+			to_execute['url'] + '/change',
+			json = {
+				'id': middleware_id,
+				'url': middleware_url,
+				'date': get_date(),
+				'change': {
+					to_execute['id']: {
+						'status': to_execute['status'],
+						'text': to_execute['text']
+					}
+				}
+		})
+
 def log_device(device_type, value, iot_device):
 	# Collections
-	devices = get_collection('iot_disp')
+	devices = get_collection('devices')
 	logs = get_collection('logs')
 
 	# Get Device info
 	device = devices.find_one({'iot_type': iot_device})
 	query = {'id': device.get('id')}
-
-	# Get Events
-	events = get_collection('iot_events')
 
 	# Date
 	this_date = get_date()
@@ -201,16 +258,56 @@ def process_data(data):
 	else:
 		pass
 
-def get_date():		# PENDING
-	return datetime.today().isoformat() + 'Z'
+def get_date():
+	return datetime.today().isoformat() + '-06:00'
 
 
 def generate_response():
-	return {'id': middleware_id, 'url': '127.0.0.1', 'date': get_date()}
+	return {'id': middleware_id, 'url': middleware_url, 'date': get_date()}
 
 
-def worker():
-    return threading.current_thread().name + str(threading.get_ident())
+def execute_external_event(event_id):		# Pending
+	frequency = 0
+	while True:
+		try:
+			# Get collection
+			events = get_collection('eevents')
+			event = events.find_one({'id': event_id})
+
+			# Getting and executing if
+			if_ = event.get('if')
+
+			frequency = if_['left']['freq']
+			mw_url = if_['left']['url']
+			mw_device = if_['left']['id']
+
+			result = True
+			# Do search here, but... how to get the last record?
+
+			# Executing branch
+			to_execute = event.get('then') if result else event.get('else')
+
+			requests.post(
+				to_execute['url'] + '/change',
+				json = {
+					'id': middleware_id,
+					'url': middleware_url,
+					'date': get_date(),
+					'change': {
+						to_execute['id']: {
+							'status': to_execute['status'],
+							'text': to_execute['text']
+						}
+					}
+			})
+
+			# Sleep
+			time.sleep(frequency)
+		except:
+			break
+
+
+# -------------------------------------- Web Server
 
 # create the flask object
 app = Flask(__name__)
@@ -233,7 +330,7 @@ def info():
 	# Dispatching request
 	server_response = generate_response()
 
-	col = get_collection('iot_disp')
+	col = get_collection('devices')
 	iot_devices = col.find({})
 
 	devices = {}
@@ -270,9 +367,9 @@ def change():
 			# Extracting fields
 			status = change[id_device]['status']
 			text = change[id_device]['text']
-			col = get_collection('iot_disp')
+			devices = get_collection('devices')
 
-			col.update_one({'id': id_device}, {'$set': {'status': status, 'text': text}})
+			devices.update_one({'id': id_device}, {'$set': {'status': status, 'text': text}})
 
 		server_response['status'] = 'OK'
 	except:
@@ -280,7 +377,7 @@ def change():
 
 	return jsonify(server_response)
 
-@app.route('/search', methods=['POST'])		# PENDING
+@app.route('/search', methods=['POST'])
 def search():
 	'''
 	Input Fields:
@@ -303,14 +400,12 @@ def search():
 	server_response = generate_response()
 
 	try:
-		col = get_collection('iot_disp')
+		col = get_collection('devices')
 		print(id_)
 		iot_device = col.find_one({'id': id_})
 		type_ = iot_device.get('type')
 
 		server_response['search'] = {'id_hardware': id_, 'type': type_}
-
-		# Do here date comparisons to get the data
 		
 		logs = get_collection('logs')
 		iot_device = logs.find_one({'id': id_})
@@ -326,19 +421,14 @@ def search():
 				server_response[candidate['date']] = {'sensor': candidate['sensor'], 'status': candidate['status'], 'text': candidate['text']}
 			else:
 				pass
-
-
 	except:
 		pass
-	'''
-	
-	'''
 
 	return jsonify(server_response)
 
 # -------------------------------------- IOT EVENTS
 
-@app.route('/create', methods=['POST'])		# PENDING
+@app.route('/create', methods=['POST'])
 def create():
 	'''
 	Input Fields:
@@ -355,23 +445,77 @@ def create():
 	if_ = create['if']
 	then = create['then']
 	else_ = create['else']
-	id_ = 'EV' + str(get_next('event'))
 
 	# Dispatching request
 	server_response = generate_response()
 
+	# Get device
+	left_device = ''
 	try:
-		col = get_collection('iot_events')
-		col.insert_one({'id': id_, 'if': if_, 'then': then, 'else': else_})	
+		# Local Events
+		if if_['left']['url'] == middleware_url:
+			id_ = if_['left']['id']
+			query = {'id': id_}
 
-		server_response['idEvent'] = id_
+
+			# If Validation area
+			devices = get_collection('devices')
+			device = devices.find_one(query)
+			field = list(if_['right'].keys()).pop(0)
+
+			if (device.get('get') == 'input') and (field == 'status' or field == 'text'):
+				raise Exception("Not allowed")
+			elif (device.get('get') == 'output') and (field == 'sensor'):
+				raise Exception("Not allowed")
+
+			# Create new event for device
+			events = get_collection('levents')
+			iotdev_events = events.find_one(query)
+
+			event_id_no = iotdev_events.get('sizeevent') + 1
+			event_id = id_ + "-EV" + str(event_id_no)
+
+			# Create the event
+			events.update_one(
+				query,
+				{
+					'$set': {
+						event_id:
+							{'if': if_, 'then': then, 'else': else_},
+						'sizeevent': event_id_no
+					}
+				}
+			)
+
+			# Success
+			server_response['idEvent'] = event_id
+		# External events
+		else:
+			id_ = if_['left']['id']
+			query = {'id': id_}
+
+			# Create new external event
+			events = get_collection('eevents')
+			event_id = "EXEV" + str(get_next('event'))
+
+			# Create the event
+			events.insert_one({'id': event_id, 'if': if_, 'then': then, 'else': else_})
+
+			# Create process
+			thread = Process(target=execute_external_event, args=[event_id])
+			thread.start()
+
+			# Success
+			server_response['idEvent'] = event_id
+
+		
 		server_response['status'] = 'OK'
 	except:
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
 
-@app.route('/delete', methods=['POST'])		# PENDING
+@app.route('/delete', methods=['POST'])
 def delete():
 	'''
 	Input Fields:
@@ -383,14 +527,30 @@ def delete():
 	rjson = request.get_json()
 
 	# Extracting fields
-	id_ = rjson['delete']['id']
+	event_id = rjson['delete']['id']
 
 	# Dispatching request
 	server_response = generate_response()
 
 	try:
-		col = get_collection('iot_events')
-		result = col.delete_one({'id': id_})
+		# Local event
+		result = None
+		if "EX" not in event_id:  
+			# Get Device id from the event id
+			device_id = event_id.split('-')[0]
+
+			# Delete the event
+			events = get_collection('levents')
+			result = events.update(
+				{'id': device_id},
+				{'$unset': {event_id: 1}}
+			)
+		# External Event
+		else:
+			# Delete the event
+			events = get_collection('eevents')
+			result = events.delete_one({'id': event_id})
+
 
 		server_response['result'] = 'OK' if result != None else 'ERROR'
 	except:
@@ -398,7 +558,7 @@ def delete():
 
 	return jsonify(server_response)
 
-@app.route('/update', methods=['POST'])		# PENDING
+@app.route('/update', methods=['POST'])
 def update():
 	'''
 	Input Fields:
@@ -411,23 +571,43 @@ def update():
 
 	# Extracting fields
 	update = rjson['update']
-	id_event = update['id']
+	event_id = update['id']
 
 	# Dispatching request
 	server_response = generate_response()
 
 	try:
 		to_update = list(update.keys())
-		col = get_collection('iot_disp')
+		# Local Event
+		if "EX" not in event_id:
+			# Get Device id from the event id
+			device_id = event_id.split('-')[0]
 
-		if 'if' in to_update:
-			col.update_one({'id': id_event}, {'$set': {'if': update['if']}})
-		
-		if 'then' in to_update:
-			col.update_one({'id': id_event}, {'$set': {'then': update['then']}})
-		
-		if 'else' in to_update:
-			col.update_one({'id': id_event}, {'$set': {'else': update['else']}})
+			# Update the event
+			events = get_collection('levents')
+
+			if 'if' in to_update:
+				events.update_one({'id': device_id}, {'$set': {event_id: {'if': update['if']}}})
+			
+			if 'then' in to_update:
+				events.update_one({'id': device_id}, {'$set': {event_id: {'then': update['then']}}})
+			
+			if 'else' in to_update:
+				events.update_one({'id': device_id}, {'$set': {event_id: {'else': update['else']}}})
+		# External event
+		else:
+			# Update the event
+			events = get_collection('eevents')
+
+			if 'if' in to_update:
+				events.update_one({'id': event_id}, {'$set': {'if': update['if']}})
+			
+			if 'then' in to_update:
+				events.update_one({'id': event_id}, {'$set': {'then': update['then']}})
+			
+			if 'else' in to_update:
+				events.update_one({'id': event_id}, {'$set': {'else': update['else']}})
+
 
 		server_response['result'] = 'OK'
 	except:
@@ -437,7 +617,7 @@ def update():
 
 # -------------------------------------- EXTRAS
 
-@app.route('/iotcreate', methods=['POST'])
+@app.route('/iotcreate', methods=['POST'])		# Pending
 def iotcreate():
 	'''
 	Input Fields:
@@ -487,12 +667,16 @@ def iotcreate():
 	server_response = generate_response()
 
 	# Registering device
-	devices = get_collection('iot_disp')
+	devices = get_collection('devices')
 	result = devices.insert_one({'id': id_, 'tag': tag, 'type': type_, 'status': False, 'iot_type': iot_type_device})
 
 	# Creating log record
 	logs = get_collection('logs')
 	result = logs.insert_one({'id': id_, 'sizelog': 0})
+
+	# Creating events
+	events = get_collection('levents')
+	result = events.insert_one({'id': id_, 'sizeevent': 0})
 	server_response['result'] = 'OK' if result != '' else 'ERROR'
 
 	return jsonify(server_response)
@@ -513,16 +697,20 @@ def iotdelete():
 	id_ = rjson['id']
 
 	# Dispatching request
-	server_response = generate_ersponse()
+	server_response = generate_response()
 
 	try:
 		# Devices
-		devices = get_collection('iot_disp')
+		devices = get_collection('devices')
 		result = devices.delete_one({'id': id_})
 
 		# Logs
 		logs = get_collection('logs')
 		result = logs.delete_one({'id': id_})
+
+		# Events
+		events = get_collection('levents')
+		result = events.delete_one({'id': id_})
 
 		server_response['result'] = 'OK'
 	except:
