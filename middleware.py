@@ -7,11 +7,13 @@ import os
 import io
 import threading
 from multiprocessing import Process
+import log
 
 virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
 middleware_id = 'MW_KH_3D_Printer'
 middleware_url = 'http://127.0.0.1:12000/'
+logger = log.Logger('middleware.log')
 
 '''
 client = MongoClient(mongo_url)
@@ -314,6 +316,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def index():
+	logger.log_warning("Unauthorized access.")
 	return "You should not be here"
 
 # -------------------------------------- IOT DEVICES ACTIONS
@@ -326,6 +329,12 @@ def info():
 	Output Fields:
 	- hardware: an object of objects
 	'''
+
+	# Extracting fields
+	rjson = request.get_json()
+
+	# Logging
+	logger.log_request(rjson['id'], "info")
 
 	# Dispatching request
 	server_response = generate_response()
@@ -353,7 +362,11 @@ def change():
 	- status: either OK or ERROR
 	'''
 
+	# Extracting fields
 	rjson = request.get_json()
+
+	# Logging
+	logger.log_request(rjson['id'], "change")
 
 	# Extracting Fields
 	change = rjson['change']
@@ -386,8 +399,11 @@ def search():
 	- status: either OK or ERROR
 	'''
 
-	
+	# Extracting fields
 	rjson = request.get_json()
+
+	# Logging
+	logger.log_request(rjson['id'], "search")
 
 	# Extracting fields
 	search = rjson['search']
@@ -438,6 +454,9 @@ def create():
 	'''
 
 	rjson = request.get_json()
+
+	# Logging
+	logger.log_request(rjson['id'], "create")
 
 	# Extracting fields
 	create = rjson['create']
@@ -526,6 +545,9 @@ def delete():
 
 	rjson = request.get_json()
 
+	# Logging
+	logger.log_request(rjson['id'], "delete")
+
 	# Extracting fields
 	event_id = rjson['delete']['id']
 
@@ -568,6 +590,9 @@ def update():
 	'''
 
 	rjson = request.get_json()
+
+	# Logging
+	logger.log_request(rjson['id'], "update")
 
 	# Extracting fields
 	update = rjson['update']
@@ -639,6 +664,9 @@ def iotcreate():
 
 	rjson = request.get_json()
 
+	# Logging
+	logger.log_request(rjson['id'], "iotcreate")
+
 	# Extracting Fields
 	tag = rjson['tag']
 	type_ = rjson['type']
@@ -693,6 +721,9 @@ def iotdelete():
 
 	rjson = request.get_json()
 
+	# Logging
+	logger.log_request(rjson['id'], "iotdelete")
+
 	# Extracting Fields
 	id_ = rjson['id']
 
@@ -725,6 +756,10 @@ def log():
 	# Getting Data
 	print("Data:")
 	data = request.data.decode("utf-8") 
+
+	# Logging
+	logger.log_vd(data)
+
 	print(data)
 	print(len(data))
 
@@ -743,4 +778,5 @@ def log():
 
 
 if __name__ == "__main__":
+
 	app.run(host='127.0.0.1', port=12000, debug=True)
