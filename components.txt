@@ -1,0 +1,83 @@
+Create input device JSON
+{
+	"tag": "---",
+	"type": "input",
+	"iot_type": ,
+	"id": "Random End User"
+}
+
+Create output device JSON
+{
+	"tag": "---",
+	"type": "output",
+	"iot_type": ,
+	"id": "Random End User"
+}
+
+iot_type:
+1) sliders = 0
+2) leds = 0
+3) switches = 0
+4) rgbs = 0
+5) fans = 0
+6) heats = 0
+7) pick_colors = 0
+
+My devices (A high tech room):
+- 1 Led RED			- Robot cleaner deactivated	(Output) (led-0)
+- 1 led GREEN 		- Robot cleaner activated (output) (led-1)
+- 2 Sliders 		- 1) Room Temperature (from 10 degree celsius to 30 degree celsius)  (output) (slider-0)
+					- 2) Living room light intensity (0 equals off to 12 max brightness) (output) (slider -1)
+- 1 switch 			- Living room light (input)
+- 1 color picker 	- Living room light choose color (input)
+- 1 Led RGB 		- Living room light color (output)
+
+Actual JSONs:
+{
+	"tag": "Robot cleaner deactivated",
+	"type": "output",
+	"iot_type": 2,
+	"id": "Random End User"
+}
+
+{
+	"tag": "Robot cleaner activated",
+	"type": "output",
+	"iot_type": 2,
+	"id": "Random End User"
+}
+
+{
+	"tag": "Room Temperature Slider Controller",
+	"type": "output",
+	"iot_type": 1,
+	"id": "Random End User"
+}
+
+{
+	"tag": "Living Room Light Intensity Slider",
+	"type": "output",
+	"iot_type": 1,
+	"id": "Random End User"
+}
+
+{
+	"tag": "Living Room Light Switch",
+	"type": "input",
+	"iot_type": 3,
+	"id": "Random End User"
+}
+
+{
+	"tag": "Living Room Color Picker",
+	"type": "input",
+	"iot_type": 7,
+	"id": "Random End User"
+}
+
+{
+	"tag": "Living Room Color RGB",
+	"type": "output",
+	"iot_type": 4,
+	"id": "Random End User"
+}

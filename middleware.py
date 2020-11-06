@@ -6,14 +6,22 @@ import time
 import os
 import io
 import threading
-from multiprocessing import Process
+from multiprocessing import Process, Lock
 import log
+import devices
 
 virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
-middleware_id = 'MW_KH_3D_Printer'
-middleware_url = 'http://127.0.0.1:12000/'
+middleware_id = 'MW_KH_Living_Room_IoT'
+# middleware_url = 'http://127.0.0.1:12000/'
+middleware_url = 'http://6525989f8f18.ngrok.io'
 logger = log.Logger('middleware.log')
+
+# Response MW variables
+flag_change_devices = False
+lock_flag = Lock()
+mw_response = ""
+
 
 '''
 client = MongoClient(mongo_url)
@@ -208,15 +216,14 @@ def process_data(data):
 		switch0 = (flags & 0x40) >> 6
 		log_device(1, switch0,'switch-0')
 		
-
+		'''
 		switch1 = (flags & 0x20) >> 5
 		log_device(1, switch1, 'switch-1')
 
-		
-		'''
 		# Processing Fan
 		fan = (flags & 0x10) >> 4
 		log_device(2, 0 if fan == 0 else speed, 'fan-0')
+		'''
 
 		# Processing RGBs
 		rgb = (flags & 0x08) >> 3
@@ -234,9 +241,11 @@ def process_data(data):
 		led1 = (flags & 0x20) >> 5
 		log_device(1, led1, 'led-1')
 
+		'''
 		# Processing heat
 		heat = flags & 0x01
 		log_device(1, heat, 'heat-0')
+		'''
 
 		# Processing Sliders
 		slider0 = sliders & 0xFF0000
@@ -245,8 +254,10 @@ def process_data(data):
 		slider1 = sliders & 0x00FF00
 		log_device(2, slider1, 'slider-1')
 
+		'''
 		slider2 = sliders & 0x0000FF
 		log_device(2, slider2, 'slider-2')
+		'''
 
 		# Processing Pick Color
 		red_color = color & 0xFF0000
@@ -254,8 +265,6 @@ def process_data(data):
 		blue_color = color & 0x0000FF
 
 		log_device(2, slider0, 'pick_color-0')
-
-		'''
 		
 	else:
 		pass
@@ -378,11 +387,23 @@ def change():
 	try:
 		for id_device in id_devices:
 			# Extracting fields
-			status = change[id_device]['status']
 			text = change[id_device]['text']
 			devices = get_collection('devices')
+			device = devcies.get({'id': id_device})
 
+			# Compute for given device
+			value, status, text = compute_text(device.get('iot_type'), text)
+
+			# Sanity Check
+			if value is None:
+				raise Exception("Error")
+
+			# Update VD
+			lock_flag.acquire()
+			mw_response = generate_data(mw_response, iot_device, value)
+			flag_change_devices = True
 			devices.update_one({'id': id_device}, {'$set': {'status': status, 'text': text}})
+			lock_flag.release()
 
 		server_response['status'] = 'OK'
 	except:
@@ -650,9 +671,6 @@ def iotcreate():
 	- type: Either 'input' or 'output'
 	- iot_type: type of IoT device
 
-	Output Fields:
-	- result: either 'ok' or 'error'
-
 	1) sliders = 0
 	2) leds = 0
 	3) switches = 0
@@ -660,6 +678,9 @@ def iotcreate():
 	5) fans = 0
 	6) heats = 0
 	7) pick_colors = 0
+
+	Output Fields:
+	- result: either 'ok' or 'error'
 	'''
 
 	rjson = request.get_json()
@@ -674,7 +695,6 @@ def iotcreate():
 	iot_type = rjson['iot_type']
 
 	# Deciding what type of iot device
-	iot_type_device = ""
 
 	if iot_type == 1:
 		iot_type_device = "slider-" + str(get_next('slider'))
@@ -696,7 +716,7 @@ def iotcreate():
 
 	# Registering device
 	devices = get_collection('devices')
-	result = devices.insert_one({'id': id_, 'tag': tag, 'type': type_, 'status': False, 'iot_type': iot_type_device})
+	result = devices.insert_one({'id': id_, 'tag': tag, 'type': type_, 'status': False, 'text': "OFF", 'iot_type': iot_type_device})
 
 	# Creating log record
 	logs = get_collection('logs')
@@ -772,9 +792,39 @@ def log():
 	response.headers['Content-Type'] = "text/plain"
 	response.headers['Access-Control-Allow-Origin'] = virtual_device_url
 	response.headers['Server'] = "Mr. Server CC8"
-	response.data = ""
+
+	lock_flag.acquire()
+	response.data = mw_response if flag_change_devices else ""
+	flag_change_devices = False
+	mw_response = data
+	lock_flag.release()
 
 	return response
+
+@app.route('/test', methods=['POST'])
+def test():
+
+	# Getting Data
+	print("Data:")
+	data = request.data.decode("utf-8") 
+
+	print(data)
+	print(len(data))
+
+	headers = {"Content-Type":"text/plain", "Server": "Mr. Server CC8", "Access-Control-Allow-Origin": virtual_device_url}
+	r = requests.post("http://127.0.0.1:1850", headers=headers, data= data)
+
+	'''
+	# Making Dummy response
+	response = make_response()
+
+	response.headers['Content-Type'] = "text/plain"
+	response.headers['Access-Control-Allow-Origin'] = virtual_device_url
+	response.headers['Server'] = "Mr. Server CC8"
+	response.data = "60F000000000000000000000"
+	'''
+
+	return "All good"
 
 
 if __name__ == "__main__":
