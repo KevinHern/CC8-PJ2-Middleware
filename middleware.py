@@ -180,29 +180,31 @@ def log_device(device_type, value, iot_device):
 
 	''' Log info '''
 	# Switch, LED or RGB
+	# 1 = Input device
 	if device_type == 1: 
+		value, status, text = devaux.compute_data(iot_device, value)
 		logs.update_one(
 			query,
 			{
 				'$set': {
 					('log' + str(log_number)):
-						{'date': this_date, 'sensor': value, 'status': device.get('status'), 'text': 'ON' if value == 1 else 'OFF'},
+						{'date': this_date, 'sensor': value, 'status': status, 'text': text},
 					'sizelog': log_number
 				}
 			}
 		)
-	# Fan, Heat, Slider, RGB or Pick Color
 	elif device_type == 2:
 		logs.update_one(
 			query,
 			{
 				'$set': {
 					('log' + str(log_number)):
-						{'date': this_date, 'sensor': value, 'status': device.get('status'), 'text': device.get('text')},
+						{'date': this_date, 'sensor': None, 'status': device.get('status'), 'text': device.get('text')},
 					'sizelog': log_number
 				}
 			}
 		)
+		
 	# Message
 	elif device_type == 3:
 		pass
@@ -213,8 +215,8 @@ def process_data(data):
 		flags = int(data[0:2], 16)
 		speed = int(data[2], 16)
 		sliders = int(data[4:10], 16)
-		led_rgb = int(data[12:18], 16)
-		color = int(data[19:24], 16)
+		led_rgb = int(data[11:17], 16)
+		color = int(data[18:24], 16)
 
 		'''
 		message = ""
@@ -226,11 +228,11 @@ def process_data(data):
 		lcd = flags & 0x80
 		'''
 
-		'''
+		
 		# Processing Switches
 		switch0 = (flags & 0x40) >> 6
 		log_device(1, switch0,'switch-0')
-		'''
+		
 		
 		'''
 		switch1 = (flags & 0x20) >> 5
@@ -242,22 +244,22 @@ def process_data(data):
 		'''
 
 		# Processing RGBs
-		'''
 		rgb = (flags & 0x08) >> 3
 
+		'''
 		red_rgb = led_rgb & 0xFF0000
 		green_rgb = led_rgb & 0x00FF00
 		blue_rgb = led_rgb & 0x0000FF
-
-		log_device(1, 0 if rgb == 0 else led_rgb, 'rgb-0')
 		'''
+
+		log_device(2, led_rgb, 'rgb-0')
 
 		# Processing LEDs
 		led0 = (flags & 0x40) >> 6
-		log_device(1, led0, 'led-0')
+		log_device(2, led0, 'led-0')
 
 		led1 = (flags & 0x20) >> 5
-		log_device(1, led1, 'led-1')
+		log_device(2, led1, 'led-1')
 
 		'''
 		# Processing heat
@@ -265,14 +267,15 @@ def process_data(data):
 		log_device(1, heat, 'heat-0')
 		'''
 
-		'''
+		
 		# Processing Sliders
-		slider0 = sliders & 0xFF0000
+		slider0 = (sliders & 0xFF0000) >> 16
 		log_device(2, slider0, 'slider-0')
 
-		slider1 = sliders & 0x00FF00
+		
+		slider1 = (sliders & 0x00FF00) >> 8
 		log_device(2, slider1, 'slider-1')
-		'''
+		
 
 		'''
 		slider2 = sliders & 0x0000FF
@@ -284,9 +287,10 @@ def process_data(data):
 		red_color = color & 0xFF0000
 		green_color = color & 0x00FF00
 		blue_color = color & 0x0000FF
-
-		log_device(2, slider0, 'pick_color-0')
 		'''
+
+		log_device(1, color, 'pick_color-0')
+		
 		
 	else:
 		pass
@@ -427,7 +431,7 @@ def change():
 			device = devices.find_one({'id': id_device})
 
 			# Compute for given device
-			value, status, text = devaux.compute_text(device.get('iot_type'), text)
+			value, status, text = devaux.compute_data(device.get('iot_type'), text)
 
 			# Sanity Check
 			if value == None:
@@ -436,14 +440,12 @@ def change():
 			# Update VD
 			lock_flag.acquire()
 			mw_response = devaux.generate_data(mw_response, device.get('iot_type'), value)
-			print(mw_response)
 			flag_change_devices = True
 			devices.update_one({'id': id_device}, {'$set': {'status': status, 'text': text}})
 			lock_flag.release()
 
 		server_response['status'] = 'OK'
 	except Exception as e:
-		print(e)
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
@@ -475,7 +477,6 @@ def search():
 
 	try:
 		col = get_collection('devices')
-		print(id_)
 		iot_device = col.find_one({'id': id_})
 		type_ = iot_device.get('type')
 
@@ -484,10 +485,8 @@ def search():
 		logs = get_collection('logs')
 		iot_device = logs.find_one({'id': id_})
 		
-		print('here')
 		num_logs = iot_device.get('sizelog')
 
-		print('here1')
 
 		for i in range(num_logs):
 			candidate = iot_device.get('log' + str(i+1))
@@ -818,7 +817,6 @@ def log():
 	global virtual_device_url
 
 	# Getting Data
-	print("Data:")
 	data = request.data.decode("utf-8") 
 
 	# Logging
@@ -846,7 +844,6 @@ def log():
 def test():
 
 	# Getting Data
-	print("Data:")
 	data = request.data.decode("utf-8") 
 
 	headers = {"Content-Type":"text/plain", "Server": "Mr. Server CC8", "Access-Control-Allow-Origin": virtual_device_url}
