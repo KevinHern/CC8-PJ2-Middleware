@@ -5,9 +5,9 @@ def led_action(text):
 		return 0x00, False, text
 
 def switch_action(text):
-	if text == "Active":
+	if text == "ON":
 		return 0x01, True, text
-	elif text == "Inactive":
+	elif text == "OFF":
 		return 0x00, False, text
 
 def rgb_action(text):
@@ -17,8 +17,8 @@ def rgb_action(text):
 		return int(text.upper()[1:], 16), True, text
 
 def color_picker_action(text):
-	if text == "Inactive":
-		return 0x000000, False, "Inactive"
+	if text == "OFF":
+		return 0x000000, False, "OFF"
 	else:
 		return int(text.upper()[1:], 16), True, text
 
@@ -31,8 +31,8 @@ def temperature_slider_action(text):
 	value = 255*(temp-10)/25
 	value = int(value)
 
-	if text == "Inactive":
-		return 0x00, False, "Inactive"
+	if text == "OFF":
+		return 0x00, False, "OFF"
 	else:
 		return int(value, 16), True, text
 
@@ -45,12 +45,13 @@ def brightness_slider_action(text):
 	value = 255*brightness/12
 	value = int(value)
 
-	if text == "Inactive":
-		return 0x00, False, "Inactive"
+	if text == "OFF":
+		return 0x00, False, "OFF"
 	else:
 		return int(value, 16), True, text
 
 def compute_text(iot_type, text):
+	print(iot_type)
 	if "led" in iot_type:
 		return led_action(text)
 	elif "switch" in iot_type:
@@ -83,7 +84,7 @@ def generate_data(data, iot_type, new_value):
 		return remaining_right + section + remaining_left
 	# Processing Switches
 	elif "switch" in iot_type:
-		remaining_right =[1:]
+		remaining_right = data[1:]
 
 		section = "0" if new_value == 1 else "4"
 

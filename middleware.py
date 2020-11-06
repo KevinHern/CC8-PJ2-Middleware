@@ -8,8 +8,15 @@ import io
 import threading
 from multiprocessing import Process, Lock
 import log
-import devices
+import devices as devaux
 
+
+# Response MW variables
+flag_change_devices = False
+lock_flag = Lock()
+mw_response = "00F000000000000000000000"
+
+# Other Auxiliary variables
 virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
 middleware_id = 'MW_KH_Living_Room_IoT'
@@ -17,10 +24,7 @@ middleware_id = 'MW_KH_Living_Room_IoT'
 middleware_url = 'http://6525989f8f18.ngrok.io'
 logger = log.Logger('middleware.log')
 
-# Response MW variables
-flag_change_devices = False
-lock_flag = Lock()
-mw_response = ""
+
 
 
 '''
@@ -49,6 +53,10 @@ col.insert_one(document)	// Inserts a document
 '''
 
 def get_collection(option):
+	# Global Vars
+	global mongo_url
+
+	# Do stuff
 	client = MongoClient(mongo_url)
 	if option == 'devices':
 		return client.cc8.iot_devices
@@ -97,6 +105,10 @@ def get_next(option):
 	return int(next_id)
 
 def do_event(value, iot_device):
+	# Global Vars
+	global middleware_id
+	global middleware_url
+
 	# Get Device info
 	device = devices.find_one({'iot_type': iot_device})
 	query = {'id': device.get('id')}
@@ -204,6 +216,7 @@ def process_data(data):
 		led_rgb = int(data[12:18], 16)
 		color = int(data[19:24], 16)
 
+		'''
 		message = ""
 		if len(data) > 24:
 			message = data[25:]
@@ -211,10 +224,13 @@ def process_data(data):
 		
 		# Processing 
 		lcd = flags & 0x80
+		'''
 
+		'''
 		# Processing Switches
 		switch0 = (flags & 0x40) >> 6
 		log_device(1, switch0,'switch-0')
+		'''
 		
 		'''
 		switch1 = (flags & 0x20) >> 5
@@ -226,6 +242,7 @@ def process_data(data):
 		'''
 
 		# Processing RGBs
+		'''
 		rgb = (flags & 0x08) >> 3
 
 		red_rgb = led_rgb & 0xFF0000
@@ -233,6 +250,7 @@ def process_data(data):
 		blue_rgb = led_rgb & 0x0000FF
 
 		log_device(1, 0 if rgb == 0 else led_rgb, 'rgb-0')
+		'''
 
 		# Processing LEDs
 		led0 = (flags & 0x40) >> 6
@@ -247,12 +265,14 @@ def process_data(data):
 		log_device(1, heat, 'heat-0')
 		'''
 
+		'''
 		# Processing Sliders
 		slider0 = sliders & 0xFF0000
 		log_device(2, slider0, 'slider-0')
 
 		slider1 = sliders & 0x00FF00
 		log_device(2, slider1, 'slider-1')
+		'''
 
 		'''
 		slider2 = sliders & 0x0000FF
@@ -260,11 +280,13 @@ def process_data(data):
 		'''
 
 		# Processing Pick Color
+		'''
 		red_color = color & 0xFF0000
 		green_color = color & 0x00FF00
 		blue_color = color & 0x0000FF
 
 		log_device(2, slider0, 'pick_color-0')
+		'''
 		
 	else:
 		pass
@@ -274,10 +296,18 @@ def get_date():
 
 
 def generate_response():
+	#Global Vars
+	global middleware_id
+	global middleware_url
+
 	return {'id': middleware_id, 'url': middleware_url, 'date': get_date()}
 
 
 def execute_external_event(event_id):		# Pending
+	# Global Vars
+	global middleware_id
+	global middleware_url
+
 	frequency = 0
 	while True:
 		try:
@@ -364,6 +394,11 @@ def info():
 
 @app.route('/change', methods=['POST'])
 def change():
+	# GLobal Vars
+	global flag_change_devices
+	global lock_flag
+	global mw_response
+
 	'''
 	Input Fields:
 
@@ -389,24 +424,26 @@ def change():
 			# Extracting fields
 			text = change[id_device]['text']
 			devices = get_collection('devices')
-			device = devcies.get({'id': id_device})
+			device = devices.find_one({'id': id_device})
 
 			# Compute for given device
-			value, status, text = compute_text(device.get('iot_type'), text)
+			value, status, text = devaux.compute_text(device.get('iot_type'), text)
 
 			# Sanity Check
-			if value is None:
+			if value == None:
 				raise Exception("Error")
 
 			# Update VD
 			lock_flag.acquire()
-			mw_response = generate_data(mw_response, iot_device, value)
+			mw_response = devaux.generate_data(mw_response, device.get('iot_type'), value)
+			print(mw_response)
 			flag_change_devices = True
 			devices.update_one({'id': id_device}, {'$set': {'status': status, 'text': text}})
 			lock_flag.release()
 
 		server_response['status'] = 'OK'
-	except:
+	except Exception as e:
+		print(e)
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
@@ -467,6 +504,8 @@ def search():
 
 @app.route('/create', methods=['POST'])
 def create():
+	# Global Vars
+	global middleware_url
 	'''
 	Input Fields:
 
@@ -772,6 +811,11 @@ def iotdelete():
 
 @app.route('/log', methods=['POST'])
 def log():
+	# Global vars
+	global flag_change_devices
+	global lock_flag
+	global mw_response
+	global virtual_device_url
 
 	# Getting Data
 	print("Data:")
@@ -779,9 +823,6 @@ def log():
 
 	# Logging
 	logger.log_vd(data)
-
-	print(data)
-	print(len(data))
 
 	# Process Data
 	process_data(data)
@@ -808,9 +849,6 @@ def test():
 	print("Data:")
 	data = request.data.decode("utf-8") 
 
-	print(data)
-	print(len(data))
-
 	headers = {"Content-Type":"text/plain", "Server": "Mr. Server CC8", "Access-Control-Allow-Origin": virtual_device_url}
 	r = requests.post("http://127.0.0.1:1850", headers=headers, data= data)
 
@@ -828,5 +866,4 @@ def test():
 
 
 if __name__ == "__main__":
-
 	app.run(host='127.0.0.1', port=12000, debug=True)
