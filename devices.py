@@ -92,9 +92,13 @@ def generate_data(data, iot_type, new_value):
 		return remaining_right + section + remaining_left
 	# Processing Switches
 	elif "switch" in iot_type:
+		section = int(data[0], 16)
 		remaining_right = data[1:]
 
-		section = "0" if new_value == 1 else "4"
+		if "0" in iot_type:
+			section = format(section | 0x4, 'x').upper() if new_value == 1 else format(section & ~0x4, 'x').upper()
+		elif "1" in iot_type:
+			section = format(section | 0x2, 'x').upper() if new_value == 1 else format(section & ~0x2, 'x').upper()
 
 		return section + remaining_right
 	# Processing RGB

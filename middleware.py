@@ -12,16 +12,16 @@ import devices as devaux
 
 
 # Response MW variables
-flag_change_devices = False
+flag_change_devices = True
 lock_flag = Lock()
-mw_response = "00F000000000000000000000"
+mw_response = "04F000000000000000000000"
 
 # Other Auxiliary variables
 virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
 middleware_id = 'MW_KH_Living_Room_IoT'
-# middleware_url = 'http://127.0.0.1:12000/'
-middleware_url = 'http://6525989f8f18.ngrok.io'
+middleware_url = 'http://127.0.0.1:12000/'
+#middleware_url = 'http://6525989f8f18.ngrok.io'
 logger = log.Logger('middleware.log')
 
 
@@ -110,18 +110,21 @@ def do_event(value, iot_device):
 	global middleware_url
 
 	# Get Device info
+	devices = get_collection('devices')
 	device = devices.find_one({'iot_type': iot_device})
 	query = {'id': device.get('id')}
 
 	# Fetch all events related to the device
 	events = get_collection('levents')
-	iotdev_events = events.find(query)
+	iotdev_events = events.find_one(query).get('events')
 
+	events_list = list(iotdev_events.keys())
 	# Execute all events
-	for event in iotdev_events:
+	for event_ in events_list:
 		# Fetch If, Then y Else
-		condition = event.get('condition')
-		if_ = event.get('if')
+		event = iotdev_events[event_]
+		if_ = event['if']
+		condition = if_['condition']
 
 		# Evaluate Condition
 		field = list(if_['right'].keys()).pop(0)
@@ -142,72 +145,160 @@ def do_event(value, iot_device):
 
 		# Do real execution
 		to_execute = {}
-
 		if result:
-			to_execute = event.get('then')
+			to_execute = event['then']
 		else:
-			to_execute = event.get('else')
+			to_execute = event['else']
 
 		# Send request
 		requests.post(
-			to_execute['url'] + '/change',
+			to_execute['url'] + ('/' if to_execute['url'][-1] != '/' else "") + 'change',
 			json = {
 				'id': middleware_id,
 				'url': middleware_url,
 				'date': get_date(),
 				'change': {
 					to_execute['id']: {
-						'status': to_execute['status'],
 						'text': to_execute['text']
 					}
 				}
 		})
+
+def execute_events(vd_data):
+	# Getting parameters
+	if len(vd_data) > 0:
+		flags = int(vd_data[0:2], 16)
+		speed = int(vd_data[2], 16)
+		sliders = int(vd_data[4:10], 16)
+		led_rgb = int(vd_data[11:17], 16)
+		color = int(vd_data[18:24], 16)
+
+		'''
+		message = ""
+		if len(data) > 24:
+			message = data[25:]
+			message = bytes.fromhex(message).decode('utf-8') 
+		
+		# Processing 
+		lcd = flags & 0x80
+		'''
+
+		
+		# Processing Switches
+		switch0 = (flags & 0x40) >> 6
+		do_event(switch0,'switch-0')
+		
+		switch1 = (flags & 0x20) >> 5
+		do_event(switch1, 'switch-1')
+
+		'''
+		# Processing Fan
+		fan = (flags & 0x10) >> 4
+		log_device(2, 0 if fan == 0 else speed, 'fan-0')
+		'''
+
+		# Processing RGBs
+		rgb = (flags & 0x08) >> 3
+
+		'''
+		red_rgb = led_rgb & 0xFF0000
+		green_rgb = led_rgb & 0x00FF00
+		blue_rgb = led_rgb & 0x0000FF
+		'''
+
+		do_event(led_rgb, 'rgb-0')
+
+		# Processing LEDs
+		led0 = (flags & 0x40) >> 6
+		do_event(led0, 'led-0')
+
+		led1 = (flags & 0x20) >> 5
+		do_event(led1, 'led-1')
+
+		'''
+		# Processing heat
+		heat = flags & 0x01
+		log_device(1, heat, 'heat-0')
+		'''
+
+		
+		# Processing Sliders
+		slider0 = (sliders & 0xFF0000) >> 16
+		do_event(slider0, 'slider-0')
+
+		
+		slider1 = (sliders & 0x00FF00) >> 8
+		do_event(slider1, 'slider-1')
+		
+
+		'''
+		slider2 = sliders & 0x0000FF
+		log_device(2, slider2, 'slider-2')
+		'''
+
+		# Processing Pick Color
+		'''
+		red_color = color & 0xFF0000
+		green_color = color & 0x00FF00
+		blue_color = color & 0x0000FF
+		'''
+
+		do_event(color, 'pick_color-0')
+		
+	else:
+		pass
 
 def log_device(device_type, value, iot_device):
 	# Collections
 	devices = get_collection('devices')
 	logs = get_collection('logs')
 
-	# Get Device info
-	device = devices.find_one({'iot_type': iot_device})
-	query = {'id': device.get('id')}
+	try:
+		# Get Device info
+		device = devices.find_one({'iot_type': iot_device})
+		query = {'id': device.get('id')}
 
-	# Date
-	this_date = get_date()
+		# Date
+		this_date = get_date()
 
-	# Log number
-	log_number = logs.find_one(query).get('sizelog') + 1
+		# Log number
+		log_number = logs.find_one(query).get('sizelog') + 1
 
-	''' Log info '''
-	# Switch, LED or RGB
-	# 1 = Input device
-	if device_type == 1: 
-		value, status, text = devaux.compute_data(iot_device, value)
-		logs.update_one(
-			query,
-			{
-				'$set': {
-					('log' + str(log_number)):
-						{'date': this_date, 'sensor': value, 'status': status, 'text': text},
-					'sizelog': log_number
+		# Do event
+		do_event(value, iot_device)
+
+		''' Log info '''
+		# Switch, LED or RGB
+		# 1 = Input device
+		if device_type == 1: 
+			value, status, text = devaux.compute_data(iot_device, value)
+			logs.update_one(
+				query,
+				{
+					'$set': {
+						('log' + str(log_number)):
+							{'date': this_date, 'sensor': value, 'status': status, 'text': text},
+						'sizelog': log_number
+					}
 				}
-			}
-		)
-	elif device_type == 2:
-		logs.update_one(
-			query,
-			{
-				'$set': {
-					('log' + str(log_number)):
-						{'date': this_date, 'sensor': None, 'status': device.get('status'), 'text': device.get('text')},
-					'sizelog': log_number
+			)
+		elif device_type == 2:
+			logs.update_one(
+				query,
+				{
+					'$set': {
+						('log' + str(log_number)):
+							{'date': this_date, 'sensor': None, 'status': device.get('status'), 'text': device.get('text')},
+						'sizelog': log_number
+					}
 				}
-			}
-		)
-		
-	# Message
-	elif device_type == 3:
+			)
+		# Message
+		elif device_type == 3:
+			pass
+	except:
 		pass
+	
 
 def process_data(data):
 	# Getting parameters
@@ -233,11 +324,10 @@ def process_data(data):
 		switch0 = (flags & 0x40) >> 6
 		log_device(1, switch0,'switch-0')
 		
-		
-		'''
 		switch1 = (flags & 0x20) >> 5
 		log_device(1, switch1, 'switch-1')
 
+		'''
 		# Processing Fan
 		fan = (flags & 0x10) >> 4
 		log_device(2, 0 if fan == 0 else speed, 'fan-0')
@@ -541,9 +631,9 @@ def create():
 			device = devices.find_one(query)
 			field = list(if_['right'].keys()).pop(0)
 
-			if (device.get('get') == 'input') and (field == 'status' or field == 'text'):
+			if (device.get('type') == 'input') and (field == 'status' or field == 'text'):
 				raise Exception("Not allowed")
-			elif (device.get('get') == 'output') and (field == 'sensor'):
+			elif (device.get('type') == 'output') and (field == 'sensor'):
 				raise Exception("Not allowed")
 
 			# Create new event for device
@@ -558,8 +648,10 @@ def create():
 				query,
 				{
 					'$set': {
-						event_id:
-							{'if': if_, 'then': then, 'else': else_},
+						'events': {
+							event_id:
+								{'if': if_, 'then': then, 'else': else_}
+						},
 						'sizeevent': event_id_no
 					}
 				}
@@ -624,7 +716,10 @@ def delete():
 			events = get_collection('levents')
 			result = events.update(
 				{'id': device_id},
-				{'$unset': {event_id: 1}}
+				{'$unset': {
+						'events': {event_id: 1}
+					}
+				}
 			)
 		# External Event
 		else:
@@ -669,15 +764,13 @@ def update():
 
 			# Update the event
 			events = get_collection('levents')
+			event = events.find_one({'id': device_id})
 
-			if 'if' in to_update:
-				events.update_one({'id': device_id}, {'$set': {event_id: {'if': update['if']}}})
-			
-			if 'then' in to_update:
-				events.update_one({'id': device_id}, {'$set': {event_id: {'then': update['then']}}})
-			
-			if 'else' in to_update:
-				events.update_one({'id': device_id}, {'$set': {event_id: {'else': update['else']}}})
+			if_ = update['if'] if 'if' in to_update else event.get('events')[event_id]['if']
+			then_ = update['then'] if 'then' in to_update else event.get('events')[event_id]['then']
+			else_ = update['else'] if 'else' in to_update else event.get('events')[event_id]['else']
+
+			events.update_one({'id': device_id}, {'$set': {'events': {event_id: {'if': if_, 'then': then_, 'else': else_}}}})
 		# External event
 		else:
 			# Update the event
@@ -822,9 +915,6 @@ def log():
 	# Logging
 	logger.log_vd(data)
 
-	# Process Data
-	process_data(data)
-
 	# Making Dummy response
 	response = make_response()
 
@@ -837,6 +927,11 @@ def log():
 	flag_change_devices = False
 	mw_response = data
 	lock_flag.release()
+
+	# Process Data
+	process_data(data)
+
+	#execute_events(data)
 
 	return response
 
