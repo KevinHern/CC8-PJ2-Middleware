@@ -3,7 +3,7 @@ from pymongo import MongoClient
 import requests
 from datetime import datetime
 import time
-import os
+import sys, os
 import io
 import threading
 from multiprocessing import Process, Lock
@@ -14,13 +14,12 @@ import devices as devaux
 # Response MW variables
 flag_change_devices = True
 lock_flag = Lock()
-mw_response = "04F000000000000000000000"
 
 # Other Auxiliary variables
 virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
 middleware_id = 'MW_KH_Living_Room_IoT'
-middleware_url = 'http://127.0.0.1:12000/'
+middleware_url = 'http://b60a795c1285.ngrok.io'
 #middleware_url = 'http://6525989f8f18.ngrok.io'
 logger = log.Logger('middleware.log')
 
@@ -62,7 +61,7 @@ def get_collection(option):
 		return client.cc8.iot_devices
 	elif option == 'levents':
 		return client.cc8.iot_events_local
-	elif option == 'eexternal':
+	elif option == 'external':
 		return client.cc8.iot_events_external
 	elif option == 'logs':
 		return client.cc8.logs
@@ -118,51 +117,64 @@ def do_event(value, iot_device):
 	events = get_collection('levents')
 	iotdev_events = events.find_one(query).get('events')
 
-	events_list = list(iotdev_events.keys())
-	# Execute all events
-	for event_ in events_list:
-		# Fetch If, Then y Else
-		event = iotdev_events[event_]
-		if_ = event['if']
-		condition = if_['condition']
+	try:
+		events_list = list(iotdev_events.keys())
+		# Execute all events
+		for event_ in events_list:
+			# Fetch If, Then y Else
+			event = iotdev_events[event_]
+			#print(event)
+			if_ = event['if']
+			condition = if_['condition']
 
-		# Evaluate Condition
-		field = list(if_['right'].keys()).pop(0)
-		result = False
+			# Evaluate Condition
+			#print("Before")
+			field = list(if_['right'].keys()).pop(0)
+			#print("after")
+			result = False
 
-		if condition == "=":
-			result = value == if_['right'][field]
-		elif condition == "!=":
-			result = value != if_['right'][field]
-		elif condition == "<":
-			result = value < if_['right'][field]
-		elif condition == "<=":
-			result = value <= if_['right'][field]
-		elif condition == ">":
-			result = value > if_['right'][field]
-		elif condition == "=>":
-			result = value >= if_['right'][field]
+			
 
-		# Do real execution
-		to_execute = {}
-		if result:
-			to_execute = event['then']
-		else:
-			to_execute = event['else']
+			value = value if device.get('type') == 'input' else device.get('text')
+			print("Value: " + str(value) + "\tRight side: " + str(if_['right'][field]))
+			if condition == "=":
+				result = value == if_['right'][field]
+			elif condition == "!=":
+				result = value != if_['right'][field]
+			elif condition == "<":
+				result = value < if_['right'][field]
+			elif condition == "<=":
+				result = value <= if_['right'][field]
+			elif condition == ">":
+				result = value > if_['right'][field]
+			elif condition == "=>":
+				result = value >= if_['right'][field]
 
-		# Send request
-		requests.post(
-			to_execute['url'] + ('/' if to_execute['url'][-1] != '/' else "") + 'change',
-			json = {
-				'id': middleware_id,
-				'url': middleware_url,
-				'date': get_date(),
-				'change': {
-					to_execute['id']: {
-						'text': to_execute['text']
+			# Do real execution
+			to_execute = {}
+			if result:
+				to_execute = event['then']
+			else:
+				to_execute = event['else']
+
+			# Send request
+
+			requests.post(
+				to_execute['url'] + ('/' if to_execute['url'][-1] != '/' else "") + 'change',
+				json = {
+					'id': middleware_id,
+					'url': middleware_url,
+					'date': get_date(),
+					'change': {
+						to_execute['id']: {
+							'text': to_execute['text']
+						}
 					}
-				}
-		})
+			})
+			
+	except Exception as e:
+		#print("Error en Do_event: " + str(e))
+		pass
 
 def execute_events(vd_data):
 	# Getting parameters
@@ -188,10 +200,10 @@ def execute_events(vd_data):
 		switch0 = (flags & 0x40) >> 6
 		do_event(switch0,'switch-0')
 		
+		'''
 		switch1 = (flags & 0x20) >> 5
 		do_event(switch1, 'switch-1')
 
-		'''
 		# Processing Fan
 		fan = (flags & 0x10) >> 4
 		log_device(2, 0 if fan == 0 else speed, 'fan-0')
@@ -264,9 +276,6 @@ def log_device(device_type, value, iot_device):
 		# Log number
 		log_number = logs.find_one(query).get('sizelog') + 1
 
-		# Do event
-		do_event(value, iot_device)
-
 		''' Log info '''
 		# Switch, LED or RGB
 		# 1 = Input device
@@ -296,8 +305,11 @@ def log_device(device_type, value, iot_device):
 		# Message
 		elif device_type == 3:
 			pass
-	except:
-		pass
+
+		# Do event
+		do_event(value, iot_device)
+	except Exception as e:
+		print("Error from log_device:" + str(e))
 	
 
 def process_data(data):
@@ -324,10 +336,10 @@ def process_data(data):
 		switch0 = (flags & 0x40) >> 6
 		log_device(1, switch0,'switch-0')
 		
+		'''
 		switch1 = (flags & 0x20) >> 5
 		log_device(1, switch1, 'switch-1')
 
-		'''
 		# Processing Fan
 		fan = (flags & 0x10) >> 4
 		log_device(2, 0 if fan == 0 else speed, 'fan-0')
@@ -345,13 +357,15 @@ def process_data(data):
 		log_device(2, led_rgb, 'rgb-0')
 
 		# Processing LEDs
+		
 		led0 = (flags & 0x40) >> 6
 		log_device(2, led0, 'led-0')
+		'''
 
 		led1 = (flags & 0x20) >> 5
 		log_device(2, led1, 'led-1')
 
-		'''
+		
 		# Processing heat
 		heat = flags & 0x01
 		log_device(1, heat, 'heat-0')
@@ -408,6 +422,7 @@ def execute_external_event(event_id):		# Pending
 			# Get collection
 			events = get_collection('eevents')
 			event = events.find_one({'id': event_id})
+			print(event)
 
 			# Getting and executing if
 			if_ = event.get('if')
@@ -422,7 +437,7 @@ def execute_external_event(event_id):		# Pending
 			# Executing branch
 			to_execute = event.get('then') if result else event.get('else')
 
-			requests.post(
+			status = requests.post(
 				to_execute['url'] + '/change',
 				json = {
 					'id': middleware_id,
@@ -467,7 +482,7 @@ def info():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "info")
+	logger.log_request(rjson['id'], "info", rjson)
 
 	# Dispatching request
 	server_response = generate_response()
@@ -490,8 +505,7 @@ def info():
 def change():
 	# GLobal Vars
 	global flag_change_devices
-	global lock_flag
-	global mw_response
+
 
 	'''
 	Input Fields:
@@ -504,9 +518,11 @@ def change():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "change")
+	logger.log_request(rjson['id'], "change", rjson)
 
 	# Extracting Fields
+
+	
 	change = rjson['change']
 	id_devices = list(change.keys())
 	
@@ -521,6 +537,7 @@ def change():
 			device = devices.find_one({'id': id_device})
 
 			# Compute for given device
+
 			value, status, text = devaux.compute_data(device.get('iot_type'), text)
 
 			# Sanity Check
@@ -528,14 +545,23 @@ def change():
 				raise Exception("Error")
 
 			# Update VD
-			lock_flag.acquire()
-			mw_response = devaux.generate_data(mw_response, device.get('iot_type'), value)
-			flag_change_devices = True
+			mw_response = ""
+			with open("response.txt", "r") as mwres:
+				values = mwres.readline()
+				mw_response = values.split('-')[0]
+			mw_response1 = devaux.generate_data(mw_response, device.get('iot_type'), value)
+			with open("response.txt", "w") as mwres:
+				mwres.write(mw_response1+"-1")
+			print("Old value: " + mw_response + "\tNew Value: " + mw_response1)
 			devices.update_one({'id': id_device}, {'$set': {'status': status, 'text': text}})
-			lock_flag.release()
+
 
 		server_response['status'] = 'OK'
 	except Exception as e:
+		print("Error en change: " + str(e))
+		exc_type, exc_obj, exc_tb = sys.exc_info()
+		fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+		print(exc_type, fname, exc_tb.tb_lineno)
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
@@ -553,7 +579,7 @@ def search():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "search")
+	logger.log_request(rjson['id'], "search", rjson)
 
 	# Extracting fields
 	search = rjson['search']
@@ -577,13 +603,15 @@ def search():
 		
 		num_logs = iot_device.get('sizelog')
 
-
+		retreived_logs = {}
 		for i in range(num_logs):
 			candidate = iot_device.get('log' + str(i+1))
 			if(finish >= candidate['date'] and candidate['date'] >= start):
-				server_response[candidate['date']] = {'sensor': candidate['sensor'], 'status': candidate['status'], 'text': candidate['text']}
+				retreived_logs[candidate['date']] = {'sensor': candidate['sensor'], 'status': candidate['status'], 'text': candidate['text']}
 			else:
 				pass
+
+		server_response['data'] = retreived_logs
 	except:
 		pass
 
@@ -605,7 +633,7 @@ def create():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "create")
+	logger.log_request(rjson['id'], "create", rjson)
 
 	# Extracting fields
 	create = rjson['create']
@@ -697,7 +725,7 @@ def delete():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "delete")
+	logger.log_request(rjson['id'], "delete", rjson)
 
 	# Extracting fields
 	event_id = rjson['delete']['id']
@@ -728,7 +756,7 @@ def delete():
 			result = events.delete_one({'id': event_id})
 
 
-		server_response['result'] = 'OK' if result != None else 'ERROR'
+		server_response['status'] = 'OK' if result != None else 'ERROR'
 	except:
 		server_response['status'] = 'ERROR'
 
@@ -746,7 +774,7 @@ def update():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "update")
+	logger.log_request(rjson['id'], "update", rjson)
 
 	# Extracting fields
 	update = rjson['update']
@@ -786,7 +814,7 @@ def update():
 				events.update_one({'id': event_id}, {'$set': {'else': update['else']}})
 
 
-		server_response['result'] = 'OK'
+		server_response['status'] = 'OK'
 	except:
 		server_response['status'] = 'ERROR'
 
@@ -817,7 +845,7 @@ def iotcreate():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "iotcreate")
+	logger.log_request(rjson['id'], "iotcreate", rjson)
 
 	# Extracting Fields
 	tag = rjson['tag']
@@ -856,7 +884,7 @@ def iotcreate():
 	# Creating events
 	events = get_collection('levents')
 	result = events.insert_one({'id': id_, 'sizeevent': 0})
-	server_response['result'] = 'OK' if result != '' else 'ERROR'
+	server_response['status'] = 'OK' if result != '' else 'ERROR'
 
 	return jsonify(server_response)
 
@@ -873,7 +901,7 @@ def iotdelete():
 	rjson = request.get_json()
 
 	# Logging
-	logger.log_request(rjson['id'], "iotdelete")
+	logger.log_request(rjson['id'], "iotdelete", rjson)
 
 	# Extracting Fields
 	id_ = rjson['id']
@@ -894,9 +922,9 @@ def iotdelete():
 		events = get_collection('levents')
 		result = events.delete_one({'id': id_})
 
-		server_response['result'] = 'OK'
+		server_response['status'] = 'OK'
 	except:
-		server_response['result'] = 'ERROR'
+		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
 
@@ -906,7 +934,6 @@ def log():
 	# Global vars
 	global flag_change_devices
 	global lock_flag
-	global mw_response
 	global virtual_device_url
 
 	# Getting Data
@@ -922,15 +949,24 @@ def log():
 	response.headers['Access-Control-Allow-Origin'] = virtual_device_url
 	response.headers['Server'] = "Mr. Server CC8"
 
-	lock_flag.acquire()
-	response.data = mw_response if flag_change_devices else ""
-	flag_change_devices = False
-	mw_response = data
-	lock_flag.release()
-
-	# Process Data
-	process_data(data)
-
+	new_response = ""
+	flag_must_edit = False
+	with open("response.txt", "r") as mwres:
+		values = mwres.readline().split('-')
+		if values[1] == '1':
+			response.data = values[0]
+			flag_must_edit = True
+		else:
+			response.data = ""
+	
+	with open("response.txt", "w") as mwres:
+		if flag_must_edit:
+			mwres.write(values[0]+"-0")
+		else:
+			mwres.write(data+"-0")
+	
+	if not flag_must_edit:
+		process_data(data)
 	#execute_events(data)
 
 	return response
