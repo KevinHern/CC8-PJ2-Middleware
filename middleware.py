@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify, make_response
 from pymongo import MongoClient
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 import sys, os
 import io
@@ -19,7 +19,7 @@ lock_flag = Lock()
 virtual_device_url = "http://127.0.0.1:1850"
 mongo_url = "mongodb://127.0.0.1:27017/"
 middleware_id = 'MW_KH_Living_Room_IoT'
-middleware_url = 'http://b60a795c1285.ngrok.io'
+middleware_url = 'http://9fbd15ae8c2e.ngrok.io'
 #middleware_url = 'http://6525989f8f18.ngrok.io'
 logger = log.Logger('middleware.log')
 
@@ -61,7 +61,7 @@ def get_collection(option):
 		return client.cc8.iot_devices
 	elif option == 'levents':
 		return client.cc8.iot_events_local
-	elif option == 'external':
+	elif option == 'eevents':
 		return client.cc8.iot_events_external
 	elif option == 'logs':
 		return client.cc8.logs
@@ -71,37 +71,41 @@ def get_collection(option):
 		return object
 
 def get_next(option):
-	field = ''
-	if option == 'device':
-		field = 'next_device'
-	elif option == 'event':
-		field = 'next_external_event'
-	elif option == 'switch':
-		field = 'next_switch'
-	elif option == 'slider':	
-		field = 'next_slider'
-	elif option == 'led':
-		field = 'next_led'
-	elif option == 'rgb':
-		field = 'next_rgb'
-	elif option == 'fan':
-		field = 'next_fan'
-	elif option == 'heat':
-		field = 'next_heat'
-	elif option == 'pick_color':
-		field = 'next_pick_color'
+	try:
+		field = ''
+		if option == 'device':
+			field = 'next_device'
+		elif option == 'event':
+			field = 'next_external_event'
+		elif option == 'switch':
+			field = 'next_switch'
+		elif option == 'slider':	
+			field = 'next_slider'
+		elif option == 'led':
+			field = 'next_led'
+		elif option == 'rgb':
+			field = 'next_rgb'
+		elif option == 'fan':
+			field = 'next_fan'
+		elif option == 'heat':
+			field = 'next_heat'
+		elif option == 'pick_color':
+			field = 'next_pick_color'
 
-	col = get_collection('misc')
-	doc = col.find_one({'name': 'misc'})
+		col = get_collection('misc')
+		doc = col.find_one({'name': 'misc'})
 
-	# Get ID and update it
-	next_id = doc.get(field)
-	doc_id = doc.get('_id')
+		# Get ID and update it
+		next_id = doc.get(field)
+		doc_id = doc.get('_id')
 
-	# Updating next ID
-	col.update_one({'_id': doc_id}, {'$inc': {field: 1}})
+		# Updating next ID
+		col.update_one({'_id': doc_id}, {'$inc': {field: 1}})
 
-	return int(next_id)
+		return int(next_id)
+	except Exception as e:
+		print("Error en get_next: " + print(e))
+
 
 def do_event(value, iot_device):
 	# Global Vars
@@ -157,8 +161,8 @@ def do_event(value, iot_device):
 			else:
 				to_execute = event['else']
 
-			# Send request
 
+			# Send request
 			requests.post(
 				to_execute['url'] + ('/' if to_execute['url'][-1] != '/' else "") + 'change',
 				json = {
@@ -167,6 +171,7 @@ def do_event(value, iot_device):
 					'date': get_date(),
 					'change': {
 						to_execute['id']: {
+							'status': to_execute['status'],
 							'text': to_execute['text']
 						}
 					}
@@ -269,13 +274,17 @@ def log_device(device_type, value, iot_device):
 		# Get Device info
 		device = devices.find_one({'iot_type': iot_device})
 		query = {'id': device.get('id')}
-
+		#print("Device: " + str(device == None))
 		# Date
 		this_date = get_date()
 
 		# Log number
-		log_number = logs.find_one(query).get('sizelog') + 1
-
+		multiple_logs = logs.find_one(query)
+		#print("Multiple Logs: " + str(device == None))
+		log_number = multiple_logs.get('sizelog') + 1
+		#print("Log Number: " + str(log_number))
+		#print("Device Status: " + str(device.get('status')))
+		#print("Device text: " + str(device.get('text')))
 		''' Log info '''
 		# Switch, LED or RGB
 		# 1 = Input device
@@ -393,7 +402,7 @@ def process_data(data):
 		blue_color = color & 0x0000FF
 		'''
 
-		log_device(1, color, 'pick_color-0')
+		#log_device(1, color, 'pick_color-0')
 		
 		
 	else:
@@ -402,6 +411,12 @@ def process_data(data):
 def get_date():
 	return datetime.today().isoformat() + '-06:00'
 
+def get_sub_date(isSubstraction):
+	today = datetime.today()
+	dtime = timedelta(seconds=3)
+	final_datetime = (today - dtime) if isSubstraction else (today + dtime)
+
+	return final_datetime.isoformat() + '-06:00'
 
 def generate_response():
 	#Global Vars
@@ -428,14 +443,66 @@ def execute_external_event(event_id):		# Pending
 			if_ = event.get('if')
 
 			frequency = if_['left']['freq']
+			#print("Frecuency: " + str(frequency))
 			mw_url = if_['left']['url']
 			mw_device = if_['left']['id']
 
 			result = True
 			# Do search here, but... how to get the last record?
+			print("Extra thread> Searching")
+			response_ext_mw = requests.post(
+				mw_url + '/search',
+				json = {
+					'id': middleware_id,
+					'url': middleware_url,
+					'date': get_date(),
+					'search': {
+						'id_hardware': mw_device,
+						'start_date': get_sub_date(True),
+						'finish_date': get_sub_date(False),
+					}
+			}).json()
+
+			print("Extra thread> Got some registers")
+			# Extract the latest value
+			logs = response_ext_mw['data']
+			ldates = list(logs.keys()) 
+			if len(ldates) == 0:
+				raise Exception("Logs Are empty")
+
+			# Obtener max date
+			max_date = ldates[0]
+			for ldate in ldates:
+				max_date = ldate if ldate > max_date else max_date
+
+			# Obtain Value
+			#print("Got some logs")
+			the_log = logs[max_date]
+			#print("Got max date")
+
+			# Evaluate condition
+			condition = if_['condition']
+			result = False
+			value = the_log['sensor']
+			if condition == "=":
+				result = value == if_['right']['sensor']
+			elif condition == "!=":
+				result = value != if_['right']['sensor']
+			elif condition == "<":
+				result = value < if_['right']['sensor']
+			elif condition == "<=":
+				result = value <= if_['right']['sensor']
+			elif condition == ">":
+				result = value > if_['right']['sensor']
+			elif condition == "=>":
+				result = value >= if_['right']['sensor']
+			print("Result: " + str(result))
 
 			# Executing branch
 			to_execute = event.get('then') if result else event.get('else')
+
+			#print("To execute Side: " + str(to_execute))
+			#print("To execute URL: " + to_execute['url'])
 
 			status = requests.post(
 				to_execute['url'] + '/change',
@@ -449,11 +516,18 @@ def execute_external_event(event_id):		# Pending
 							'text': to_execute['text']
 						}
 					}
-			})
+			}).json()['status']
+
+			if status == 'OK':
+				print("Evento ejecutado correctamente")
+			else:
+				print("Evento ejecutado incorrectamente")
+			
 
 			# Sleep
-			time.sleep(frequency)
-		except:
+			time.sleep(frequency/1000)
+		except Exception as e:
+			print("Error on executing external event: " + print(e))
 			break
 
 
@@ -532,6 +606,7 @@ def change():
 	try:
 		for id_device in id_devices:
 			# Extracting fields
+			print("Change JSON: " + str(change))
 			text = change[id_device]['text']
 			devices = get_collection('devices')
 			device = devices.find_one({'id': id_device})
@@ -577,6 +652,7 @@ def search():
 
 	# Extracting fields
 	rjson = request.get_json()
+	print("The JSON: " + str(rjson))
 
 	# Logging
 	logger.log_request(rjson['id'], "search", rjson)
@@ -660,9 +736,9 @@ def create():
 			field = list(if_['right'].keys()).pop(0)
 
 			if (device.get('type') == 'input') and (field == 'status' or field == 'text'):
-				raise Exception("Not allowed")
+				raise Exception("Not allowed, device is input and got status or text")
 			elif (device.get('type') == 'output') and (field == 'sensor'):
-				raise Exception("Not allowed")
+				raise Exception("Not allowed, device is output and got sensor")
 
 			# Create new event for device
 			events = get_collection('levents')
@@ -708,7 +784,8 @@ def create():
 
 		
 		server_response['status'] = 'OK'
-	except:
+	except Exception as e:
+		print("Error en create: " + str(e))
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
@@ -757,7 +834,8 @@ def delete():
 
 
 		server_response['status'] = 'OK' if result != None else 'ERROR'
-	except:
+	except Exception as e:
+		print("Error en delete: " + str(e))
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
@@ -815,7 +893,8 @@ def update():
 
 
 		server_response['status'] = 'OK'
-	except:
+	except Exception as e:
+		print("Error en update: " + str(e))
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
@@ -923,7 +1002,8 @@ def iotdelete():
 		result = events.delete_one({'id': id_})
 
 		server_response['status'] = 'OK'
-	except:
+	except Exception as e:
+		print("Error en iotdelete: " + str(e))
 		server_response['status'] = 'ERROR'
 
 	return jsonify(server_response)
@@ -989,7 +1069,8 @@ def test():
 	response.headers['Server'] = "Mr. Server CC8"
 	response.data = "60F000000000000000000000"
 	'''
-
+	print(get_sub_date(True))
+	print(get_date())
 	return "All good"
 
 

@@ -1,5 +1,5 @@
 // Create Collections
-db.createCollection("iot_disp")
+db.createCollection("iot_devices")
 db.createCollection("iot_events_local")
 db.createCollection("iot_events_external")
 db.createCollection("logs")
@@ -20,13 +20,13 @@ db.miscellaneous.insert({
 })
 
 // Query docs
-db.iot_disp.find({})
+db.iot_devices.find({})
 db.iot_events.find({})
 db.logs.find({})
 db.miscellaneous.find({})
 
 // Delete collections
-db.iot_disp.drop()
+db.iot_devices.drop()
 db.iot_events_local.drop()
 db.iot_events_external.drop()
 db.logs.drop()
