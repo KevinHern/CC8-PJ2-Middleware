@@ -103,17 +103,17 @@ def generate_data(data, iot_type, new_value):
 		return section + remaining_right
 	# Processing RGB
 	elif "rgb" in iot_type:
+		print("In devices.py: old value is " + data + " and new value is " + str(new_value))
 		remaining1 = data[0]
 		section1 = int(data[1], 16)
 		remaining2 = data[2:11]
-		rgb = int(data[11:17], 16)
 		remaining3 = data[17:]
 
-		if new_value == 0:
-			section1 = format(section1 & ~0x8).upper()
+		if new_value == 'OFF':
+			section1 = format(section1 & ~0x8, 'x').upper()
 			rgb = "000000"
 		else:
-			section1 = format(section1 | 0x8).upper()
+			section1 = format(section1 | 0x8, 'x').upper()
 			
 			red = (new_value & 0xFF0000) >> 16
 			red = ("0" if red < 16 else "") + format(red, 'x').upper()
