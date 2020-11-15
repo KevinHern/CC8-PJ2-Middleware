@@ -1,0 +1,222 @@
+// Change JSONs
+
+// Turn on Green LED
+{
+	"id": "EUApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757-06:00",
+	"change": {
+		"id1": {
+			"text": "ON"
+		}
+	}
+}
+
+
+// Temperature Slider (from 10 to 35 celsius)
+{
+	"id": "EUApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757-06:00",
+	"change": {
+		"id2": {
+			"text": "10"
+		}
+	}
+}
+
+// Brightness Slider (from 0 to 12)
+{
+	"id": "EUApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757-06:00",
+	"change": {
+		"id3": {
+			"text": "ON"
+		}
+	}
+}
+
+
+
+---------------------------------------
+
+Search JSONs
+
+{
+	"id": "EUApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757Z",
+	"search": {
+		"id_hardware": "id6",
+		"start_date": "2020-11-06T08:23:15.0-06:00",
+		"finish_date": "2020-11-06T08:23:19.0-06:00"
+	}
+}
+
+---------------------------------------
+
+Events JSONs
+
+// Robot cleaner activation
+{
+	"id": "EUApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757Z",
+	"create": {
+		"if": {
+			"left": {
+				"url": "http://127.0.0.1:12000/",
+				"id": "id7"
+			},
+			"condition": "=",
+			"right": {
+				"sensor": 0
+			}
+		},
+		"then": {
+			"url": "http://127.0.0.1:12000/",
+			"id": "id0",
+			"text": "ON"
+		},
+		"else": {
+			"url": "http://127.0.0.1:12000/",
+			"id": "id0",
+			"text": "OFF"
+		}
+	}
+}
+
+{
+	"id": "EUApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757Z",
+	"create": {
+		"if": {
+			"left": {
+				"url": "http://127.0.0.1:12000/",
+				"id": "id7"
+			},
+			"condition": "=",
+			"right": {
+				"sensor": 1
+			}
+		},
+		"then": {
+			"url": "http://127.0.0.1:12000/",
+			"id": "id1",
+			"text": "ON"
+		},
+		"else": {
+			"url": "http://127.0.0.1:12000/",
+			"id": "id1",
+			"text": "OFF"
+		}
+	}
+}
+
+// Borrar evento
+
+{
+	"id": "EUApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757Z",
+	"delete": {
+		"id": "id1-EV2"
+	}
+}
+
+// Update evento
+
+{
+	"id": "UEApp_CC8Project001",
+	"url": "192.168.1.14",
+	"date": "1989-12-20T07:35:58.757Z",
+	"update": {
+		"id": "id1-EV4",
+		"if": {
+			"left": {
+				"url": "http://127.0.0.1:12000/",
+				"id": "id7"
+			},
+			"condition": "=",
+			"right": {
+				"sensor": 1
+			}
+		},
+		"then": {
+			"url": "http://127.0.0.1:12000/",
+			"id": "id0",
+			"text": "ON"
+		},
+		"else": {
+			"url": "http://127.0.0.1:12000/",
+			"id": "id0",
+			"text": "OFF"
+		}
+	}
+}
+
+{
+  "id": "test_end_user_eddy",
+  "create": {
+    "if": {
+      "left": {
+        "id": "id3",
+        "url": "http://b60a795c1285.ngrok.io",
+        "freq": 5000
+      },
+      "right": {
+        "sensor": 1
+      },
+      "condition": "="
+    },
+    "then": {
+      "id": "id0",
+      "status": "",
+      "url": "http://b60a795c1285.ngrok.io",
+      "text": "ON"
+    },
+    "else": {
+      "id": "id0",
+      "status": "",
+      "url": "http://b60a795c1285.ngrok.io",
+      "text": "OFF"
+    }
+  },
+  "url": "192.168.1.14",
+  "date": "2020-11-15T00:29:23.226-06:00"
+}
+
+
+// External event
+{
+  "url": "192.168.1.14",
+  "date": "2020-11-15T13:37:31.837-06:00",
+  "id": "test_end_user_eddy",
+  "create": {
+    "else": {
+      "url": "http://9fbd15ae8c2e.ngrok.io",
+      "text": "#FF0000",
+      "id": "id4",
+      "status": ""
+    },
+    "then": {
+      "url": "http://9fbd15ae8c2e.ngrok.io",
+      "text": "#00FF00",
+      "id": "id4",
+      "status": ""
+    },
+    "if": {
+      "right": {
+        "sensor": 1
+      },
+      "condition": "=",
+      "left": {
+        "url": "https://3be140048bc9.ngrok.io",
+        "id": "lights",
+        "freq": 5000
+      }
+    }
+  }
+}
