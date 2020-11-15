@@ -35,14 +35,7 @@ My devices (A high tech room):
 
 Actual JSONs:
 {
-	"tag": "Robot Cleaner Deactivated (LED-Red)",
-	"type": "output",
-	"iot_type": 2,
-	"id": "Random End User"
-}
-
-{
-	"tag": "Robot Cleaner Activated (LED-Green)",
+	"tag": "Robot Cleaner Activated (LED-Red)",
 	"type": "output",
 	"iot_type": 2,
 	"id": "Random End User"
@@ -63,13 +56,6 @@ Actual JSONs:
 }
 
 {
-	"tag": "Living Room Light Switch",
-	"type": "input",
-	"iot_type": 3,
-	"id": "Random End User"
-}
-
-{
 	"tag": "Robot Cleaner Switch",
 	"type": "input",
 	"iot_type": 3,
@@ -77,15 +63,15 @@ Actual JSONs:
 }
 
 {
-	"tag": "Living Room Color Picker",
-	"type": "input",
-	"iot_type": 7,
+	"tag": "Living Room Color RGB",
+	"type": "output",
+	"iot_type": 4,
 	"id": "Random End User"
 }
 
 {
-	"tag": "Living Room Color RGB",
+	"tag": "Living Room Couch Color Picker",
 	"type": "output",
-	"iot_type": 4,
+	"iot_type": 7,
 	"id": "Random End User"
 }

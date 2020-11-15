@@ -1,6 +1,7 @@
 # Imports
 import logging
 from datetime import datetime
+import json
 
 
 def get_today():
@@ -15,9 +16,11 @@ class Logger:
         print(self.headerFormat + message)
         logging.warning(message)
 
-    def log_request(self, id_, action):
-        print(self.headerFormat + "From " + id_ + " requested /" + action)
-        logging.warning("From " + id_ + " requested /" + action)
+    def log_request(self, id_, action, the_json = None):
+        print(self.headerFormat + "From " + id_ + " requested /" + action +
+            ("" if json == None else ("\nJSON received:\n" + json.dumps(the_json, indent=2))))
+        logging.warning("From " + id_ + " requested /" + action +
+            ("" if json == None else ("\nJSON received:\n" + json.dumps(the_json, indent=2))))
 
     def log_vd(self, hex_stream):
         print(self.headerFormat + "From VD hex stream is: " + hex_stream)
