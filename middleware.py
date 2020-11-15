@@ -133,7 +133,7 @@ def do_event(value, iot_device):
 
 			# Evaluate Condition
 			#print("Before")
-			field = list(if_['right'].keys()).pop(0)
+			field = 'sensor' if device.get('type') == 'input' else 'text'
 			#print("after")
 			result = False
 
@@ -617,7 +617,7 @@ def change():
 
 			# Sanity Check
 			if value == None:
-				raise Exception("Error")
+				raise Exception("Error en computar el valor")
 
 			# Update VD
 			mw_response = ""
@@ -733,12 +733,12 @@ def create():
 			# If Validation area
 			devices = get_collection('devices')
 			device = devices.find_one(query)
-			field = list(if_['right'].keys()).pop(0)
+			fields = list(if_['right'].keys())
 
-			if (device.get('type') == 'input') and (field == 'status' or field == 'text'):
-				raise Exception("Not allowed, device is input and got status or text")
-			elif (device.get('type') == 'output') and (field == 'sensor'):
-				raise Exception("Not allowed, device is output and got sensor")
+			if (device.get('type') == 'input') and ('sensor' not in fields):
+				raise Exception("Not allowed, device is input and found no sensor")
+			elif (device.get('type') == 'output') and (('text' not in fields) or ('status' not in fields)):
+				raise Exception("Not allowed, device is output and found no status or text")
 
 			# Create new event for device
 			events = get_collection('levents')
